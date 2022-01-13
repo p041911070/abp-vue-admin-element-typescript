@@ -5,14 +5,19 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp;
 using Volo.Abp.Clients;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus;
 using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.Guids;
+using Volo.Abp.Json;
 using Volo.Abp.MultiTenancy;
 using Volo.Abp.Threading;
+using Volo.Abp.Timing;
+using Volo.Abp.Uow;
 using Volo.Abp.Users;
 
 namespace LINGYUN.Abp.EventBus.CAP
@@ -22,12 +27,8 @@ namespace LINGYUN.Abp.EventBus.CAP
     /// </summary>
     [Dependency(ServiceLifetime.Singleton, ReplaceServices = true)]
     [ExposeServices(typeof(IDistributedEventBus), typeof(CAPDistributedEventBus))]
-    public class CAPDistributedEventBus : EventBusBase, IDistributedEventBus
+    public class CAPDistributedEventBus : DistributedEventBusBase, IDistributedEventBus
     {
-        /// <summary>
-        /// Abp分布式事件总线配置
-        /// </summary>
-        protected AbpDistributedEventBusOptions AbpDistributedEventBusOptions { get; }
         /// <summary>
         /// CAP消息发布接口
         /// </summary>
@@ -52,10 +53,14 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// 当前客户端
         /// </summary>
         protected ICurrentClient CurrentClient { get; }
-    /// <summary>
-    /// 取消令牌
-    /// </summary>
-    protected ICancellationTokenProvider CancellationTokenProvider { get; }
+        /// <summary>
+        /// typeof <see cref="IJsonSerializer"/>
+        /// </summary>
+        protected IJsonSerializer JsonSerializer { get; }
+        /// <summary>
+        /// 取消令牌
+        /// </summary>
+        protected ICancellationTokenProvider CancellationTokenProvider { get; }
         /// <summary>
         /// constructor
         /// </summary>
@@ -63,9 +68,13 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <param name="distributedEventBusOptions"></param>
         /// <param name="capPublisher"></param>
         /// <param name="currentUser"></param>
-        /// <param name="currentTenant"></param>
         /// <param name="currentClient"></param>
+        /// <param name="currentTenant"></param>
+        /// <param name="jsonSerializer"></param>
+        /// <param name="unitOfWorkManager"></param>
         /// <param name="cancellationTokenProvider"></param>
+        /// <param name="guidGenerator"></param>
+        /// <param name="clock"></param>
         /// <param name="customDistributedEventSubscriber"></param>
         public CAPDistributedEventBus(IServiceScopeFactory serviceScopeFactory,
             IOptions<AbpDistributedEventBusOptions> distributedEventBusOptions,
@@ -73,16 +82,26 @@ namespace LINGYUN.Abp.EventBus.CAP
             ICurrentUser currentUser,
             ICurrentClient currentClient,
             ICurrentTenant currentTenant,
+            IJsonSerializer jsonSerializer,
+            IUnitOfWorkManager unitOfWorkManager,
+            IGuidGenerator guidGenerator,
+            IClock clock,
             ICancellationTokenProvider cancellationTokenProvider,
             ICustomDistributedEventSubscriber customDistributedEventSubscriber) 
-            : base(serviceScopeFactory, currentTenant)
+            : base(
+                  serviceScopeFactory, 
+                  currentTenant,
+                  unitOfWorkManager, 
+                  distributedEventBusOptions,
+                  guidGenerator,
+                  clock)
         {
             CapPublisher = capPublisher;
             CurrentUser = currentUser;
             CurrentClient = currentClient;
+            JsonSerializer = jsonSerializer;
             CancellationTokenProvider = cancellationTokenProvider;
             CustomDistributedEventSubscriber = customDistributedEventSubscriber;
-            AbpDistributedEventBusOptions = distributedEventBusOptions.Value;
             HandlerFactories = new ConcurrentDictionary<Type, List<IEventHandlerFactory>>();
             EventTypes = new ConcurrentDictionary<string, Type>();
         }
@@ -94,9 +113,7 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <returns></returns>
         public override IDisposable Subscribe(Type eventType, IEventHandlerFactory factory)
         {
-            // 自定义的事件订阅者,可以不需要事件注册的事件类型
-            CustomDistributedEventSubscriber.Subscribe(eventType, factory);
-            return new DisposeAction(() => CustomDistributedEventSubscriber.UnSubscribe(eventType, factory));
+            return NullDisposable.Instance;
         }
         /// <summary>
         /// 退订事件
@@ -105,27 +122,6 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <param name="action"></param>
         public override void Unsubscribe<TEvent>(Func<TEvent, Task> action)
         {
-            Check.NotNull(action, nameof(action));
-
-            GetOrCreateHandlerFactories(typeof(TEvent))
-                .Locking(factories =>
-                {
-                    factories.RemoveAll(
-                        factory =>
-                        {
-                            if (!(factory is SingleInstanceHandlerFactory singleInstanceFactory))
-                            {
-                                return false;
-                            }
-
-                            if (!(singleInstanceFactory.HandlerInstance is ActionEventHandler<TEvent> actionHandler))
-                            {
-                                return false;
-                            }
-
-                            return actionHandler.Action == action;
-                        });
-                });
         }
         /// <summary>
         /// 退订事件
@@ -134,15 +130,6 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <param name="handler">事件处理器</param>
         public override void Unsubscribe(Type eventType, IEventHandler handler)
         {
-            GetOrCreateHandlerFactories(eventType)
-                .Locking(factories =>
-                {
-                    factories.RemoveAll(
-                        factory =>
-                            factory is SingleInstanceHandlerFactory &&
-                            (factory as SingleInstanceHandlerFactory).HandlerInstance == handler
-                    );
-                });
         }
         /// <summary>
         /// 退订事件
@@ -151,8 +138,6 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <param name="factory">事件处理器工厂</param>
         public override void Unsubscribe(Type eventType, IEventHandlerFactory factory)
         {
-            GetOrCreateHandlerFactories(eventType).Locking(factories => factories.Remove(factory));
-            CustomDistributedEventSubscriber.UnSubscribe(eventType, factory);
         }
         /// <summary>
         /// 退订所有事件
@@ -160,38 +145,17 @@ namespace LINGYUN.Abp.EventBus.CAP
         /// <param name="eventType">事件类型</param>
         public override void UnsubscribeAll(Type eventType)
         {
-            GetOrCreateHandlerFactories(eventType).Locking(factories => factories.Clear());
         }
-        /// <summary>
-        /// 订阅事件
-        /// </summary>
-        /// <typeparam name="TEvent">事件类型</typeparam>
-        /// <param name="handler">事件处理器</param>
-        /// <returns></returns>
-        public IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler) where TEvent : class
-        {
-            return Subscribe(typeof(TEvent), handler);
-        }
-
         /// <summary>
         /// 发布事件
         /// </summary>
         /// <param name="eventType">事件类型</param>
         /// <param name="eventData">事件数据对象</param>
         /// <returns></returns>
-        public override async Task PublishAsync(Type eventType, object eventData)
+        protected override async Task PublishToEventBusAsync(Type eventType, object eventData)
         {
             var eventName = EventNameAttribute.GetNameOrDefault(eventType);
-            await CapPublisher
-                .PublishAsync(
-                    eventName, eventData,
-                    new Dictionary<string, string>
-                    {
-                        { AbpCAPHeaders.UserId, CurrentUser.Id?.ToString() ?? "" },
-                        { AbpCAPHeaders.ClientId, CurrentClient.Id ?? "" },
-                        { AbpCAPHeaders.TenantId, CurrentTenant.Id?.ToString() ?? "" },
-                    },
-                    CancellationTokenProvider.FallbackToProvider());
+            await PublishAsync(eventName, eventData);
         }
         /// <summary>
         /// 获取事件处理器工厂列表
@@ -210,19 +174,6 @@ namespace LINGYUN.Abp.EventBus.CAP
             return handlerFactoryList.ToArray();
         }
 
-        private List<IEventHandlerFactory> GetOrCreateHandlerFactories(Type eventType)
-        {
-            return HandlerFactories.GetOrAdd(
-                eventType,
-                type =>
-                {
-                    var eventName = EventNameAttribute.GetNameOrDefault(type);
-                    EventTypes[eventName] = type;
-                    return new List<IEventHandlerFactory>();
-                }
-            );
-        }
-
         private static bool ShouldTriggerEventForHandler(Type targetEventType, Type handlerEventType)
         {
             //Should trigger same type
@@ -239,6 +190,55 @@ namespace LINGYUN.Abp.EventBus.CAP
             }
 
             return false;
+        }
+
+        public override async Task PublishFromOutboxAsync(OutgoingEventInfo outgoingEvent, OutboxConfig outboxConfig)
+        {
+            await PublishAsync(outgoingEvent.EventName, outgoingEvent.EventData);
+        }
+
+        public override async Task ProcessFromInboxAsync(IncomingEventInfo incomingEvent, InboxConfig inboxConfig)
+        {
+            var eventType = EventTypes.GetOrDefault(incomingEvent.EventName);
+            if (eventType == null)
+            {
+                return;
+            }
+
+            var eventJson = Encoding.UTF8.GetString(incomingEvent.EventData);
+            var eventData = JsonSerializer.Deserialize(eventType, eventJson);
+            var exceptions = new List<Exception>();
+            await TriggerHandlersAsync(eventType, eventData, exceptions, inboxConfig);
+            if (exceptions.Any())
+            {
+                ThrowOriginalExceptions(eventType, exceptions);
+            }
+        }
+
+        protected override byte[] Serialize(object eventData)
+        {
+            var eventJson = JsonSerializer.Serialize(eventData);
+
+            return Encoding.UTF8.GetBytes(eventJson);
+        }
+
+        protected override void AddToUnitOfWork(IUnitOfWork unitOfWork, UnitOfWorkEventRecord eventRecord)
+        {
+            unitOfWork.AddOrReplaceDistributedEvent(eventRecord);
+        }
+
+        protected async Task PublishAsync(string eventName, object eventData)
+        {
+            await CapPublisher
+                .PublishAsync(
+                    eventName, eventData,
+                    new Dictionary<string, string>
+                    {
+                        { AbpCAPHeaders.UserId, CurrentUser.Id?.ToString() ?? "" },
+                        { AbpCAPHeaders.ClientId, CurrentClient.Id ?? "" },
+                        { AbpCAPHeaders.TenantId, CurrentTenant.Id?.ToString() ?? "" },
+                    },
+                    CancellationTokenProvider.FallbackToProvider());
         }
     }
 }

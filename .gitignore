@@ -7,11 +7,12 @@ task
 obj
 bin
 Logs
-appsettings.json
-appsettings.*.json
+appsettings.Production.json
 tempkey.jwk
 .vs
 Publish
+LocalNuget
+pnpm-lock.yaml
 
 /tests/e2e/videos/
 /tests/e2e/screenshots/

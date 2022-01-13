@@ -58,6 +58,7 @@ namespace LINGYUN.Abp.MessageService.Chat
             Guid userId,
             Guid friendId,
             string remarkName = "",
+            bool isStatic = false,
             CancellationToken cancellationToken = default)
         {
             using (_currentTenant.Change(tenantId))
@@ -66,6 +67,7 @@ namespace LINGYUN.Abp.MessageService.Chat
                 {
                     var userFriend = new UserChatFriend(userId, friendId, remarkName);
                     userFriend.SetStatus(UserFriendStatus.Added);
+                    userFriend.IsStatic = isStatic;
 
                     await _userChatFriendRepository.InsertAsync(userFriend);
                 }
@@ -81,9 +83,9 @@ namespace LINGYUN.Abp.MessageService.Chat
 
         [UnitOfWork]
         public virtual async Task<UserAddFriendResult> AddRequestAsync(
-            Guid? tenantId, 
-            Guid userId, 
-            Guid friendId, 
+            Guid? tenantId,
+            Guid userId,
+            Guid friendId,
             string remarkName = "",
             string description = "",
             CancellationToken cancellationToken = default)
@@ -125,7 +127,7 @@ namespace LINGYUN.Abp.MessageService.Chat
         [UnitOfWork]
         public virtual async Task AddShieldMemberAsync(
             Guid? tenantId,
-            Guid userId, 
+            Guid userId,
             Guid friendId,
             CancellationToken cancellationToken = default)
         {
@@ -136,19 +138,18 @@ namespace LINGYUN.Abp.MessageService.Chat
             Guid? tenantId,
             Guid userId,
             string sorting = nameof(UserFriend.UserId),
-            bool reverse = false,
             CancellationToken cancellationToken = default
             )
         {
             using (_currentTenant.Change(tenantId))
             {
-                return await GetAllFriendByCacheItemAsync(userId, sorting, reverse, cancellationToken);
+                return await GetAllFriendByCacheItemAsync(userId, sorting, cancellationToken);
             }
         }
 
         public virtual async Task<int> GetCountAsync(
-            Guid? tenantId, 
-            Guid userId, 
+            Guid? tenantId,
+            Guid userId,
             string filter = "",
             CancellationToken cancellationToken = default)
         {
@@ -161,18 +162,17 @@ namespace LINGYUN.Abp.MessageService.Chat
 
         public virtual async Task<List<UserFriend>> GetPagedListAsync(
             Guid? tenantId,
-            Guid userId, 
-            string filter = "", 
-            string sorting = nameof(UserFriend.UserId), 
-            bool reverse = false, 
-            int skipCount = 0, 
+            Guid userId,
+            string filter = "",
+            string sorting = nameof(UserFriend.UserId),
+            int skipCount = 0,
             int maxResultCount = 10,
             CancellationToken cancellationToken = default)
         {
             using (_currentTenant.Change(tenantId))
             {
                 return await _userChatFriendRepository
-                    .GetMembersAsync(userId, filter, sorting, reverse,
+                    .GetMembersAsync(userId, filter, sorting,
                         skipCount, maxResultCount, cancellationToken);
             }
         }
@@ -193,8 +193,8 @@ namespace LINGYUN.Abp.MessageService.Chat
         }
 
         public virtual async Task<UserFriend> GetMemberAsync(
-            Guid? tenantId, 
-            Guid userId, 
+            Guid? tenantId,
+            Guid userId,
             Guid friendId,
             CancellationToken cancellationToken = default)
         {
@@ -207,7 +207,7 @@ namespace LINGYUN.Abp.MessageService.Chat
 
         [UnitOfWork]
         public virtual async Task RemoveMemberAsync(
-            Guid? tenantId, 
+            Guid? tenantId,
             Guid userId,
             Guid friendId,
             CancellationToken cancellationToken = default)
@@ -234,8 +234,8 @@ namespace LINGYUN.Abp.MessageService.Chat
 
 
         protected virtual async Task ChangeFriendShieldAsync(
-            Guid? tenantId, 
-            Guid userId, 
+            Guid? tenantId,
+            Guid userId,
             Guid friendId,
             bool isBlack = false,
             CancellationToken cancellationToken = default)
@@ -254,7 +254,6 @@ namespace LINGYUN.Abp.MessageService.Chat
         protected virtual async Task<List<UserFriend>> GetAllFriendByCacheItemAsync(
             Guid userId,
             string sorting = nameof(UserFriend.UserId),
-            bool reverse = false,
             CancellationToken cancellationToken = default
             )
         {
@@ -270,7 +269,7 @@ namespace LINGYUN.Abp.MessageService.Chat
 
             _logger.LogDebug($"Not found in the cache: {cacheKey}");
             var friends = await _userChatFriendRepository
-                    .GetAllMembersAsync(userId, sorting, reverse, cancellationToken);
+                    .GetAllMembersAsync(userId, sorting, cancellationToken);
             cacheItem = new UserFriendCacheItem(friends);
             _logger.LogDebug($"Set item in the cache: {cacheKey}");
             await _cache.SetAsync(cacheKey, cacheItem, token: cancellationToken);

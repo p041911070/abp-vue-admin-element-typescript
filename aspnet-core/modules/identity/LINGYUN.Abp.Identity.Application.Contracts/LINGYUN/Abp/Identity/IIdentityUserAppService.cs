@@ -37,13 +37,27 @@ namespace LINGYUN.Abp.Identity
         /// <param name="id"></param>
         /// <param name="input"></param>
         /// <returns></returns>
-        Task ChangeTwoFactorEnabledAsync(Guid id, ChangeTwoFactorEnabledDto input);
+        Task ChangeTwoFactorEnabledAsync(Guid id, TwoFactorEnabledDto input);
         /// <summary>
         /// 变更用户密码
         /// </summary>
         /// <param name="id"></param>
         /// <param name="input"></param>
         /// <returns></returns>
-        Task ChangePasswordAsync(Guid id, ChangePasswordInput input);
+        /// TODO: 移除api，改为重置用户密码
+        // Task ChangePasswordAsync(Guid id, ChangePasswordInput input);
+        /// <summary>
+        /// 锁定
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="seconds">锁定时长</param>
+        /// <returns></returns>
+        Task LockAsync(Guid id, int seconds);
+        /// <summary>
+        /// 解除锁定
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
+        Task UnLockAsync(Guid id);
     }
 }

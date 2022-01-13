@@ -1,4 +1,5 @@
-﻿using LINGYUN.Abp.IM.Contract;
+﻿using LINGYUN.Abp.IM;
+using LINGYUN.Abp.IM.Contract;
 using LINGYUN.Abp.MessageService.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -15,7 +16,7 @@ namespace LINGYUN.Abp.MessageService.Chat
     public class EfCoreUserChatFriendRepository : EfCoreRepository<IMessageServiceDbContext, UserChatFriend, long>, IUserChatFriendRepository
     {
         public EfCoreUserChatFriendRepository(
-            IDbContextProvider<IMessageServiceDbContext> dbContextProvider) 
+            IDbContextProvider<IMessageServiceDbContext> dbContextProvider)
             : base(dbContextProvider)
         {
         }
@@ -30,11 +31,8 @@ namespace LINGYUN.Abp.MessageService.Chat
         public virtual async Task<List<UserFriend>> GetAllMembersAsync(
             Guid userId,
             string sorting = nameof(UserChatFriend.RemarkName),
-            bool reverse = false,
              CancellationToken cancellationToken = default)
         {
-            sorting = reverse ? sorting + " DESC" : sorting;
-
             var dbContext = await GetDbContextAsync();
             var userFriendQuery = from ucf in dbContext.Set<UserChatFriend>()
                                   join ucc in dbContext.Set<UserChatCard>()
@@ -57,11 +55,12 @@ namespace LINGYUN.Abp.MessageService.Chat
                                       SpecialFocus = ucf.SpecialFocus,
                                       TenantId = ucf.TenantId,
                                       UserId = ucf.UserId,
-                                      UserName = ucc.UserName
+                                      UserName = ucc.UserName,
+                                      Online = ucc.State == UserOnlineState.Online,
                                   };
 
             return await userFriendQuery
-                .OrderBy(sorting ?? $"{nameof(UserChatFriend.RemarkName)} DESC")
+                .OrderBy(sorting ?? nameof(UserChatFriend.RemarkName))
                 .ToListAsync(GetCancellationToken(cancellationToken));
         }
 
@@ -88,17 +87,22 @@ namespace LINGYUN.Abp.MessageService.Chat
                                       SpecialFocus = ucf.SpecialFocus,
                                       TenantId = ucf.TenantId,
                                       UserId = ucf.UserId,
-                                      UserName = ucc.UserName
+                                      UserName = ucc.UserName,
+                                      Online = ucc.State == UserOnlineState.Online,
                                   };
 
             return await userFriendQuery
                 .FirstOrDefaultAsync(GetCancellationToken(cancellationToken));
         }
 
-        public virtual async Task<List<UserFriend>> GetMembersAsync(Guid userId, string filter = "", string sorting = nameof(UserChatFriend.UserId), bool reverse = false, int skipCount = 0, int maxResultCount = 10, CancellationToken cancellationToken = default)
+        public virtual async Task<List<UserFriend>> GetMembersAsync(
+            Guid userId,
+            string filter = "",
+            string sorting = nameof(UserChatFriend.UserId),
+            int skipCount = 0,
+            int maxResultCount = 10,
+            CancellationToken cancellationToken = default)
         {
-            sorting = reverse ? sorting + " desc" : sorting;
-
             var dbContext = await GetDbContextAsync();
             // 过滤用户资料
             var userChatCardQuery = dbContext.Set<UserChatCard>()
@@ -130,11 +134,12 @@ namespace LINGYUN.Abp.MessageService.Chat
                                       SpecialFocus = ucf.SpecialFocus,
                                       TenantId = ucf.TenantId,
                                       UserId = ucf.UserId,
-                                      UserName = ucc.UserName
+                                      UserName = ucc.UserName,
+                                      Online = ucc.State == UserOnlineState.Online,
                                   };
 
             return await userFriendQuery
-                .OrderBy(sorting)
+                .OrderBy(sorting ?? nameof(UserChatFriend.UserId))
                 .PageBy(skipCount, maxResultCount)
                 .ToListAsync(GetCancellationToken(cancellationToken));
         }
@@ -172,7 +177,8 @@ namespace LINGYUN.Abp.MessageService.Chat
                                       SpecialFocus = ucf.SpecialFocus,
                                       TenantId = ucf.TenantId,
                                       UserId = ucf.UserId,
-                                      UserName = ucc.UserName
+                                      UserName = ucc.UserName,
+                                      Online = ucc.State == UserOnlineState.Online,
                                   };
 
             return await userFriendQuery

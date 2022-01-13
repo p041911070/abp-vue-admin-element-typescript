@@ -47,20 +47,27 @@ namespace LINGYUN.Abp.OssManagement
             this IOssContainer ossContainer,
             string prefix = null,
             string marker = null,
+            int skipCount = 0,
             int maxResultCount = 10)
         {
             return await ossContainer.GetListAsync(
-                new GetOssContainersRequest(prefix, marker, maxResultCount));
+                new GetOssContainersRequest(prefix, marker, skipCount, maxResultCount));
         }
 
         public static async Task<OssObject> GetObjectAsync(
             this IOssContainer ossContainer,
             string bucket,
             string @object,
-            string path = "")
+            string path = "",
+            bool md5 = false,
+            bool createPathIsNotExists = false)
         {
             return await ossContainer.GetObjectAsync(
-                new GetOssObjectRequest(bucket, @object, path));
+                new GetOssObjectRequest(bucket, @object, path)
+                {
+                    MD5 = md5,
+                    CreatePathIsNotExists = createPathIsNotExists
+                });
         }
 
         public static async Task<GetOssObjectsResponse> GetObjectsAsync(
@@ -70,10 +77,17 @@ namespace LINGYUN.Abp.OssManagement
             string marker = null, 
             string delimiter = null, 
             string encodingType = null,
-            int maxResultCount = 10)
+            bool md5 = false,
+            int skipCount = 0,
+            int maxResultCount = 10,
+            bool createPathIsNotExists = false)
         {
             return await ossContainer.GetObjectsAsync(
-                new GetOssObjectsRequest(name, prefix, marker, delimiter, encodingType, maxResultCount));
+                new GetOssObjectsRequest(name, prefix, marker, delimiter, encodingType, skipCount, maxResultCount)
+                {
+                    MD5 = md5,
+                    CreatePathIsNotExists = createPathIsNotExists,
+                });
         }
     }
 }

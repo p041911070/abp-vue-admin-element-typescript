@@ -105,6 +105,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
                     ? objectName.Replace(objectPath, "")
                     : objectName,
                 objectPath,
+                aliyunObject.ETag,
                 DateTime.Now,
                 aliyunObject.ContentLength,
                 DateTime.Now,
@@ -126,6 +127,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
 
         public virtual async Task DeleteAsync(string name)
         {
+            // 阿里云oss在控制台设置即可，无需改变
             var ossClient = await CreateClientAsync();
 
             if (BucketExists(ossClient, name))
@@ -214,6 +216,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
                     ? aliyunOssObject.Key.Replace(objectPath, "")
                     : aliyunOssObject.Key,
                 request.Path,
+                aliyunOssObject.Metadata.ETag,
                 aliyunOssObject.Metadata.LastModified,
                 aliyunOssObject.Metadata.ContentLength,
                 aliyunOssObject.Metadata.LastModified,
@@ -238,6 +241,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
         {
             var ossClient = await CreateClientAsync();
 
+            // TODO: 阿里云的分页差异需要前端来弥补,传递Marker, 按照Oss控制台的逻辑,直接把MaxKeys设置较大值就行了
             var aliyunRequest = new ListBucketsRequest
             {
                 Marker = request.Marker,
@@ -274,6 +278,8 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
             var marker = !objectPath.IsNullOrWhiteSpace() && !request.Marker.IsNullOrWhiteSpace()
                 ? request.Marker.Replace(objectPath, "")
                 : request.Marker;
+
+            // TODO: 阿里云的分页差异需要前端来弥补,传递Marker, 按照Oss控制台的逻辑,直接把MaxKeys设置较大值就行了
             var aliyunRequest = new ListObjectsRequest(request.BucketName)
             {
                 Marker = !marker.IsNullOrWhiteSpace() ? objectPath + marker : marker,
@@ -291,6 +297,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
                                     ? x.Key.Replace(objectPath, "")
                                     : x.Key, // 去除目录名称
                                    request.Prefix,
+                                   x.ETag,
                                    x.LastModified,
                                    x.Size,
                                    x.LastModified,
@@ -312,6 +319,7 @@ namespace LINGYUN.Abp.OssManagement.Aliyun
                         .Select(x => new OssObject(
                             x.Replace(objectPath, ""),
                             request.Prefix,
+                            "",
                             null,
                             0L,
                             null,

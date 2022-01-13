@@ -6,10 +6,10 @@ using Volo.Abp.MultiTenancy;
 namespace LINGYUN.Abp.OssManagement
 {
     [DependsOn(
+        typeof(AbpOssManagementDomainSharedModule),
         typeof(AbpDddDomainModule),
         typeof(AbpMultiTenancyModule),
-        typeof(AbpFeaturesLimitValidationModule),
-        typeof(AbpOssManagementDomainSharedModule)
+        typeof(AbpFeaturesLimitValidationModule)
         )]
     public class AbpOssManagementDomainModule : AbpModule
     {

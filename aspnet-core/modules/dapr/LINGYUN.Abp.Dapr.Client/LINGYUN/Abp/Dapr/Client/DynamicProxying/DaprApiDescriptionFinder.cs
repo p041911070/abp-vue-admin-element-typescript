@@ -14,6 +14,7 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.Http.Client.DynamicProxying;
 using Volo.Abp.Http.Modeling;
 using Volo.Abp.MultiTenancy;
+using Volo.Abp.Reflection;
 using Volo.Abp.Threading;
 using Volo.Abp.Tracing;
 
@@ -21,6 +22,11 @@ namespace LINGYUN.Abp.Dapr.Client.DynamicProxying
 {
     public class DaprApiDescriptionFinder : IDaprApiDescriptionFinder, ITransientDependency
     {
+        public static JsonSerializerOptions DeserializeOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
         public ICancellationTokenProvider CancellationTokenProvider { get; set; }
         protected IApiDescriptionCache Cache { get; }
         protected AbpCorrelationIdOptions AbpCorrelationIdOptions { get; }
@@ -111,12 +117,9 @@ namespace LINGYUN.Abp.Dapr.Client.DynamicProxying
 
             var content = await response.Content.ReadAsStringAsync();
 
-            var result = JsonSerializer.Deserialize<ApplicationApiDescriptionModel>(content, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
+            var result = JsonSerializer.Deserialize<ApplicationApiDescriptionModel>(content, DeserializeOptions);
 
-            return (ApplicationApiDescriptionModel)result;
+            return result;
         }
 
         protected virtual void AddHeaders(HttpRequestMessage requestMessage)
@@ -145,17 +148,7 @@ namespace LINGYUN.Abp.Dapr.Client.DynamicProxying
 
         protected virtual bool TypeMatches(MethodParameterApiDescriptionModel actionParameter, ParameterInfo methodParameter)
         {
-            return NormalizeTypeName(actionParameter.TypeAsString) ==
-                   NormalizeTypeName(methodParameter.ParameterType.GetFullNameWithAssemblyName());
-        }
-
-        protected virtual string NormalizeTypeName(string typeName)
-        {
-            const string placeholder = "%COREFX%";
-            const string netCoreLib = "System.Private.CoreLib";
-            const string netFxLib = "mscorlib";
-
-            return typeName.Replace(netCoreLib, placeholder).Replace(netFxLib, placeholder);
+            return actionParameter.Type.ToUpper() == TypeHelper.GetFullNameHandlingNullableAndGenerics(methodParameter.ParameterType).ToUpper();
         }
     }
 }

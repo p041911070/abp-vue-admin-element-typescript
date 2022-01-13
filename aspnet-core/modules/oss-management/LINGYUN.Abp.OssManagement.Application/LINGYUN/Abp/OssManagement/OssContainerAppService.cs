@@ -45,7 +45,7 @@ namespace LINGYUN.Abp.OssManagement
             var oss = CreateOssContainer();
 
             var containerResponse = await oss.GetListAsync(
-                input.Prefix, input.Marker, input.MaxResultCount);
+                input.Prefix, input.Marker, input.SkipCount, input.MaxResultCount);
 
             return ObjectMapper.Map<GetOssContainersResponse, OssContainersResultDto>(containerResponse);
         }
@@ -56,8 +56,8 @@ namespace LINGYUN.Abp.OssManagement
 
             var ossObjectResponse = await oss.GetObjectsAsync(
                 input.Bucket, input.Prefix, input.Marker,
-                input.Delimiter, input.EncodingType,
-                input.MaxResultCount);
+                input.Delimiter, input.EncodingType, input.MD5,
+                input.SkipCount, input.MaxResultCount);
 
             return ObjectMapper.Map<GetOssObjectsResponse, OssObjectsResultDto>(ossObjectResponse);
         }

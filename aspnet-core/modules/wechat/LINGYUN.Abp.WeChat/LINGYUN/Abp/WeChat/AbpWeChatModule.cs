@@ -1,12 +1,12 @@
 ﻿using LINGYUN.Abp.WeChat.Localization;
 using Microsoft.Extensions.DependencyInjection;
-using Polly;
 using System;
 using Volo.Abp.Caching;
 using Volo.Abp.Features;
 using Volo.Abp.Json;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
+using Volo.Abp.Settings;
 using Volo.Abp.VirtualFileSystem;
 
 namespace LINGYUN.Abp.WeChat
@@ -14,7 +14,8 @@ namespace LINGYUN.Abp.WeChat
     [DependsOn(
         typeof(AbpCachingModule),
         typeof(AbpFeaturesModule),
-        typeof(AbpJsonModule))]
+        typeof(AbpJsonModule),
+        typeof(AbpSettingsModule))]
     public class AbpWeChatModule : AbpModule
     {
         public override void ConfigureServices(ServiceConfigurationContext context)
@@ -35,8 +36,7 @@ namespace LINGYUN.Abp.WeChat
                 options =>
                 {
                     options.BaseAddress = new Uri("https://api.weixin.qq.com");
-                }).AddTransientHttpErrorPolicy(builder =>
-                    builder.WaitAndRetryAsync(3, i => TimeSpan.FromSeconds(Math.Pow(2, i))));
+                });
         }
     }
 }

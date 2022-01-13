@@ -1,65 +1,82 @@
-﻿using LINGYUN.Abp.IM.Contract;
-using LINGYUN.Abp.IM.Group;
+﻿using LINGYUN.Abp.IdGenerator;
+using LINGYUN.Abp.IM.Contract;
+using LINGYUN.Abp.IM.Groups;
+using LINGYUN.Abp.IM.Localization;
 using LINGYUN.Abp.IM.Messages;
-using LINGYUN.Abp.RealTime.Client;
-using LINGYUN.Abp.RealTime.SignalR;
+using LINGYUN.Abp.RealTime;
+using LINGYUN.Abp.RealTime.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
+using Volo.Abp;
+using Volo.Abp.AspNetCore.ExceptionHandling;
+using Volo.Abp.AspNetCore.SignalR;
+using Volo.Abp.Data;
+using Volo.Abp.Localization;
+using Volo.Abp.Users;
 
 namespace LINGYUN.Abp.IM.SignalR.Hubs
 {
     [Authorize]
-    public class MessagesHub : OnlineClientHubBase
+    public class MessagesHub : AbpHub
     {
-        protected AbpIMSignalROptions Options { get; }
-        protected IFriendStore FriendStore { get; }
-        protected IMessageStore MessageStore { get; }
-        protected IUserGroupStore UserGroupStore { get; }
+        protected IMessageProcessor Processor => LazyServiceProvider.LazyGetService<IMessageProcessor>();
 
-        public MessagesHub(
-            IFriendStore friendStore,
-            IMessageStore messageStore,
-            IUserGroupStore userGroupStore,
-            IOptions<AbpIMSignalROptions> options)
+        protected IUserOnlineChanger OnlineChanger => LazyServiceProvider.LazyGetService<IUserOnlineChanger>();
+
+        protected IDistributedIdGenerator DistributedIdGenerator => LazyServiceProvider.LazyGetRequiredService<IDistributedIdGenerator>();
+
+        protected IExceptionToErrorInfoConverter ErrorInfoConverter => LazyServiceProvider.LazyGetRequiredService<IExceptionToErrorInfoConverter>();
+
+        protected AbpIMSignalROptions Options => LazyServiceProvider.LazyGetRequiredService<IOptions<AbpIMSignalROptions>>().Value;
+
+        protected IFriendStore FriendStore => LazyServiceProvider.LazyGetRequiredService<IFriendStore>();
+
+        protected IMessageStore MessageStore => LazyServiceProvider.LazyGetRequiredService<IMessageStore>();
+
+        protected IUserGroupStore UserGroupStore => LazyServiceProvider.LazyGetRequiredService<IUserGroupStore>();
+
+        public override async Task OnConnectedAsync()
         {
-            FriendStore = friendStore;
-            MessageStore = messageStore;
-            UserGroupStore = userGroupStore;
-            Options = options.Value;
+            await base.OnConnectedAsync();
+
+            await SendUserOnlineStateAsync();
         }
 
-        protected override async Task OnClientConnectedAsync(IOnlineClient client)
+        public override async Task OnDisconnectedAsync(Exception exception)
         {
-            await base.OnClientConnectedAsync(client);
-            // 加入通讯组
-            var userGroups = await UserGroupStore.GetUserGroupsAsync(client.TenantId, client.UserId.Value);
+            await base.OnDisconnectedAsync(exception);
+
+            await SendUserOnlineStateAsync(false);
+        }
+
+        protected virtual async Task SendUserOnlineStateAsync(bool isOnlined = true)
+        {
+            var methodName = isOnlined ? Options.UserOnlineMethod : Options.UserOfflineMethod;
+
+            var userGroups = await UserGroupStore.GetUserGroupsAsync(CurrentTenant.Id, CurrentUser.GetId());
             foreach (var group in userGroups)
             {
-                await Groups.AddToGroupAsync(client.ConnectionId, group.Name);
-                var groupClient = Clients.Group(group.Name);
-                if (groupClient != null)
+                if (isOnlined)
                 {
-                    // 发送用户上线通知
-                    await groupClient.SendAsync(Options.UserOnlineMethod, client.TenantId, client.UserId.Value);
+                    // 应使用群组标识
+                    await Groups.AddToGroupAsync(Context.ConnectionId, group.Id);
                 }
+                var groupClient = Clients.Group(group.Id);
+                await groupClient.SendAsync(methodName, CurrentTenant.Id, CurrentUser.GetId());
             }
 
-            // 发送好友上线通知
-            var userFriends = await FriendStore.GetListAsync(client.TenantId, client.UserId.Value);
+            var userFriends = await FriendStore.GetListAsync(CurrentTenant.Id, CurrentUser.GetId());
             if (userFriends.Count > 0)
             {
                 var friendClientIds = userFriends.Select(friend => friend.FriendId.ToString()).ToImmutableArray();
                 var userClients = Clients.Users(friendClientIds);
-                if (userClients != null)
-                {
-                    await userClients.SendAsync(Options.UserOnlineMethod, client.TenantId, client.UserId.Value);
-                }
+                await userClients.SendAsync(methodName, CurrentTenant.Id, CurrentUser.GetId());
             }
         }
         /// <summary>
@@ -67,58 +84,129 @@ namespace LINGYUN.Abp.IM.SignalR.Hubs
         /// </summary>
         /// <param name="chatMessage"></param>
         /// <returns></returns>
-        [HubMethodName("SendMessage")]
+        [HubMethodName("send")]
         public virtual async Task SendMessageAsync(ChatMessage chatMessage)
         {
-            // 持久化
-            await MessageStore.StoreMessageAsync(chatMessage, cancellationToken: Context.ConnectionAborted);
+            await SendMessageAsync(Options.GetChatMessageMethod, chatMessage, true);
+        }
 
+        [HubMethodName("recall")]
+        public virtual async Task ReCallAsync(ChatMessage chatMessage)
+        {
+            await Processor?.ReCallAsync(chatMessage);
             if (!chatMessage.GroupId.IsNullOrWhiteSpace())
             {
-                await SendMessageToGroupAsync(chatMessage);
+                await SendMessageAsync(
+                    Options.ReCallChatMessageMethod,
+                    ChatMessage.SystemLocalized(
+                        chatMessage.FormUserId,
+                        chatMessage.GroupId,
+                        new LocalizableStringInfo(
+                            LocalizationResourceNameAttribute.GetName(typeof(AbpIMResource)),
+                            "Messages:RecallMessage",
+                            new Dictionary<object, object>
+                            {
+                                { "User", chatMessage.FormUserName }
+                            }),
+                        Clock,
+                        chatMessage.MessageType,
+                        chatMessage.TenantId)
+                    .SetProperty(nameof(ChatMessage.MessageId).ToPascalCase(), chatMessage.MessageId),
+                    callbackException: false);
             }
             else
             {
-                await SendMessageToUserAsync(chatMessage);
+                await SendMessageAsync(
+                    Options.ReCallChatMessageMethod,
+                    ChatMessage.SystemLocalized(
+                        chatMessage.ToUserId.Value,
+                        chatMessage.FormUserId,
+                        new LocalizableStringInfo(
+                            LocalizationResourceNameAttribute.GetName(typeof(AbpIMResource)),
+                            "Messages:RecallMessage",
+                            new Dictionary<object, object>
+                            {
+                                { "User", chatMessage.FormUserName }
+                            }),
+                        Clock,
+                        chatMessage.MessageType,
+                        chatMessage.TenantId)
+                    .SetProperty(nameof(ChatMessage.MessageId).ToPascalCase(), chatMessage.MessageId),
+                    callbackException: false);
             }
         }
 
-        protected virtual async Task SendMessageToGroupAsync(ChatMessage chatMessage)
+        [HubMethodName("read")]
+        public virtual async Task ReadAsync(ChatMessage chatMessage)
+        {
+            await Processor?.ReadAsync(chatMessage);
+        }
+
+        protected virtual async Task SendMessageAsync(string methodName, ChatMessage chatMessage, bool callbackException = false)
+        {
+            // 持久化
+            try
+            {
+                chatMessage.SetProperty(nameof(ChatMessage.IsAnonymous), chatMessage.IsAnonymous);
+                chatMessage.MessageId = DistributedIdGenerator.Create().ToString();
+                await MessageStore.StoreMessageAsync(chatMessage);
+
+                if (!chatMessage.GroupId.IsNullOrWhiteSpace())
+                {
+                    await SendMessageToGroupAsync(methodName, chatMessage);
+                }
+                else
+                {
+                    await SendMessageToUserAsync(methodName, chatMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (callbackException && ex is IBusinessException)
+                {
+                    var errorInfo = ErrorInfoConverter.Convert(ex, options =>
+                    {
+                        options.SendExceptionsDetailsToClients = false;
+                        options.SendStackTraceToClients = false;
+                    });
+                    if (!chatMessage.GroupId.IsNullOrWhiteSpace())
+                    {
+                        await SendMessageToGroupAsync(
+                            methodName,
+                            ChatMessage.System(
+                                chatMessage.FormUserId,
+                                chatMessage.GroupId,
+                                errorInfo.Message,
+                                Clock,
+                                chatMessage.MessageType,
+                                chatMessage.TenantId));
+                    }
+                    else
+                    {
+                        await SendMessageToUserAsync(
+                            methodName,
+                            ChatMessage.System(
+                                chatMessage.ToUserId.Value,
+                                chatMessage.FormUserId,
+                                errorInfo.Message,
+                                Clock,
+                                chatMessage.MessageType,
+                                chatMessage.TenantId));
+                    }
+                }
+            }
+        }
+
+        protected virtual async Task SendMessageToGroupAsync(string methodName, ChatMessage chatMessage)
         {
             var signalRClient = Clients.Group(chatMessage.GroupId);
-            if (signalRClient == null)
-            {
-                Logger.LogDebug("Can not get group " + chatMessage.GroupId + " from SignalR hub!");
-                return;
-            }
-
-            await signalRClient.SendAsync(Options.GetChatMessageMethod, chatMessage, cancellationToken: Context.ConnectionAborted);
+            await signalRClient.SendAsync(methodName, chatMessage);
         }
 
-        protected virtual async Task SendMessageToUserAsync(ChatMessage chatMessage)
+        protected virtual async Task SendMessageToUserAsync(string methodName, ChatMessage chatMessage)
         {
-            var onlineClientContext = new OnlineClientContext(chatMessage.TenantId, chatMessage.ToUserId.GetValueOrDefault());
-            var onlineClients = OnlineClientManager.GetAllByContext(onlineClientContext);
-
-            foreach (var onlineClient in onlineClients)
-            {
-                try
-                {
-                    var signalRClient = Clients.Client(onlineClient.ConnectionId);
-                    if (signalRClient == null)
-                    {
-                        Logger.LogDebug("Can not get user " + onlineClientContext.UserId + " with connectionId " + onlineClient.ConnectionId + " from SignalR hub!");
-                        continue;
-                    }
-                    await signalRClient.SendAsync(Options.GetChatMessageMethod, chatMessage, cancellationToken: Context.ConnectionAborted);
-                }
-                catch (Exception ex)
-                {
-                    // 发送异常记录就行了,因为消息已经持久化
-                    Logger.LogWarning("Could not send message to user: {0}", chatMessage.ToUserId);
-                    Logger.LogWarning("Send to user message error: {0}", ex.Message);
-                }
-            }
+            var onlineClients = Clients.User(chatMessage.ToUserId.GetValueOrDefault().ToString());
+            await onlineClients.SendAsync(methodName, chatMessage);
         }
     }
 }

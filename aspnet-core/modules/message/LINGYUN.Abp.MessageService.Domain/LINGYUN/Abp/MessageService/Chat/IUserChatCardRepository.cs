@@ -9,6 +9,10 @@ namespace LINGYUN.Abp.MessageService.Chat
 {
     public interface IUserChatCardRepository : IBasicRepository<UserChatCard, long>
     {
+        Task<UserChatCard> FindByUserIdAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default);
+
         Task<bool> CheckUserIdExistsAsync(
             Guid userId,
             CancellationToken cancellationToken = default);
@@ -26,7 +30,6 @@ namespace LINGYUN.Abp.MessageService.Chat
             int? endAge = null,
             Sex? sex = null,
             string sorting = nameof(UserChatCard.UserId),
-            bool reverse = false,
             int skipCount = 0,
             int maxResultCount = 10,
             CancellationToken cancellationToken = default);

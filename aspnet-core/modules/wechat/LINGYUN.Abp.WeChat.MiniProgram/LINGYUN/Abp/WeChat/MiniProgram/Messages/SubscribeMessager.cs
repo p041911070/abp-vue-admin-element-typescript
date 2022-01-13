@@ -1,8 +1,10 @@
-﻿using LINGYUN.Abp.WeChat.OpenId;
+﻿using LINGYUN.Abp.Features.LimitValidation;
+using LINGYUN.Abp.WeChat.MiniProgram.Features;
+using LINGYUN.Abp.WeChat.OpenId;
 using LINGYUN.Abp.WeChat.Token;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -11,26 +13,24 @@ using System.Threading;
 using System.Threading.Tasks;
 using Volo.Abp;
 using Volo.Abp.DependencyInjection;
-using Volo.Abp.Json;
+using Volo.Abp.Features;
 
 namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
 {
+    [RequiresFeature(WeChatMiniProgramFeatures.Enable)]
     public class SubscribeMessager : ISubscribeMessager, ITransientDependency
     {
         public ILogger<SubscribeMessager> Logger { get; set; }
         protected IHttpClientFactory HttpClientFactory { get; }
-        protected IJsonSerializer JsonSerializer { get; }
         protected AbpWeChatMiniProgramOptionsFactory MiniProgramOptionsFactory { get; }
         protected IWeChatTokenProvider WeChatTokenProvider { get; }
         protected IUserWeChatOpenIdFinder UserWeChatOpenIdFinder { get; }
         public SubscribeMessager(
-            IJsonSerializer jsonSerializer,
             IHttpClientFactory httpClientFactory,
             IWeChatTokenProvider weChatTokenProvider,
             IUserWeChatOpenIdFinder userWeChatOpenIdFinder,
             AbpWeChatMiniProgramOptionsFactory miniProgramOptionsFactory)
         {
-            JsonSerializer = jsonSerializer;
             HttpClientFactory = httpClientFactory;
             WeChatTokenProvider = weChatTokenProvider;
             UserWeChatOpenIdFinder = userWeChatOpenIdFinder;
@@ -39,6 +39,12 @@ namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
             Logger = NullLogger<SubscribeMessager>.Instance;
         }
 
+        [RequiresFeature(WeChatMiniProgramFeatures.Messages.Enable)]
+        [RequiresLimitFeature(
+            WeChatMiniProgramFeatures.Messages.SendLimit,
+            WeChatMiniProgramFeatures.Messages.SendLimitInterval,
+            LimitPolicy.Month,
+            WeChatMiniProgramFeatures.Messages.DefaultSendLimit)]
         public virtual async Task SendAsync(
             Guid toUser,
             string templateId,
@@ -48,7 +54,7 @@ namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
             Dictionary<string, object> data = null,
             CancellationToken cancellation = default)
         {
-            var openId = await UserWeChatOpenIdFinder.FindByUserIdAsync(toUser, AbpWeChatMiniProgramConsts.ProviderKey);
+            var openId = await UserWeChatOpenIdFinder.FindByUserIdAsync(toUser, AbpWeChatMiniProgramConsts.ProviderName);
             if (openId.IsNullOrWhiteSpace())
             {
                 Logger.LogWarning("Can not found openId, Unable to send WeChat message!");
@@ -62,6 +68,12 @@ namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
             await SendAsync(messageData, cancellation);
         }
 
+        [RequiresFeature(WeChatMiniProgramFeatures.Messages.Enable)]
+        [RequiresLimitFeature(
+            WeChatMiniProgramFeatures.Messages.SendLimit,
+            WeChatMiniProgramFeatures.Messages.SendLimitInterval,
+            LimitPolicy.Month,
+            WeChatMiniProgramFeatures.Messages.DefaultSendLimit)]
         public virtual async Task SendAsync(SubscribeMessage message, CancellationToken cancellationToken = default)
         {
             var options = await MiniProgramOptionsFactory.CreateAsync();
@@ -75,7 +87,7 @@ namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
             var weChatSendNotificationPath = "/cgi-bin/message/subscribe/send";
             var requestUrl = BuildRequestUrl(weChatSendNotificationUrl, weChatSendNotificationPath, requestParamters);
             var responseContent = await MakeRequestAndGetResultAsync(requestUrl, message, cancellationToken);
-            var response = JsonSerializer.Deserialize<SubscribeMessageResponse>(responseContent);
+            var response = JsonConvert.DeserializeObject<SubscribeMessageResponse>(responseContent);
 
             if (!response.IsSuccessed)
             {
@@ -87,7 +99,7 @@ namespace LINGYUN.Abp.WeChat.MiniProgram.Messages
         protected virtual async Task<string> MakeRequestAndGetResultAsync(string url, SubscribeMessage message, CancellationToken cancellationToken = default)
         {
             var client = HttpClientFactory.CreateClient(AbpWeChatMiniProgramConsts.HttpClient);
-            var sendDataContent = JsonSerializer.Serialize(message);
+            var sendDataContent = JsonConvert.SerializeObject(message);
             var requestContent = new StringContent(sendDataContent);
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, url)
             {

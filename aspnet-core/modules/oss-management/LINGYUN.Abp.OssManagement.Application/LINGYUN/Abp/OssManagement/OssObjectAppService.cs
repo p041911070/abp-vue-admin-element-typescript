@@ -1,77 +1,48 @@
-﻿using LINGYUN.Abp.Features.LimitValidation;
-using LINGYUN.Abp.OssManagement.Features;
-using LINGYUN.Abp.OssManagement.Permissions;
-using LINGYUN.Abp.OssManagement.Settings;
+﻿using LINGYUN.Abp.OssManagement.Permissions;
 using Microsoft.AspNetCore.Authorization;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
-using Volo.Abp.Features;
-using Volo.Abp.IO;
-using Volo.Abp.Settings;
-using Volo.Abp.Validation;
+using System.Web;
+using Volo.Abp.Content;
 
 namespace LINGYUN.Abp.OssManagement
 {
     [Authorize(AbpOssManagementPermissions.OssObject.Default)]
     public class OssObjectAppService : OssManagementApplicationServiceBase, IOssObjectAppService
     {
+        protected FileUploadMerger Merger { get; }
         protected IOssContainerFactory OssContainerFactory { get; }
 
         public OssObjectAppService(
+            FileUploadMerger merger,
             IOssContainerFactory ossContainerFactory)
         {
+            Merger = merger;
             OssContainerFactory = ossContainerFactory;
         }
 
         [Authorize(AbpOssManagementPermissions.OssObject.Create)]
-        [RequiresFeature(AbpOssManagementFeatureNames.OssObject.UploadFile)]
-        [RequiresLimitFeature(
-            AbpOssManagementFeatureNames.OssObject.UploadLimit,
-            AbpOssManagementFeatureNames.OssObject.UploadInterval,
-            LimitPolicy.Month)]
         public virtual async Task<OssObjectDto> CreateAsync(CreateOssObjectInput input)
         {
-            if (!input.Content.IsNullOrEmpty())
+            // 内容为空时建立目录
+            if (input.File == null || !input.File.ContentLength.HasValue)
             {
-                // 检查文件大小
-                var fileSizeLimited = await SettingProvider
-                    .GetAsync(
-                        AbpOssManagementSettingNames.FileLimitLength,
-                        AbpOssManagementSettingNames.DefaultFileLimitLength);
-                if (fileSizeLimited * 1024 * 1024 < input.Content.Length)
-                {
-                    ThrowValidationException(L["UploadFileSizeBeyondLimit", fileSizeLimited], nameof(input.Content));
-                }
+                var oss = CreateOssContainer();
+                var request = new CreateOssObjectRequest(
+                    HttpUtility.UrlDecode(input.Bucket),
+                    HttpUtility.UrlDecode(input.FileName),
+                    Stream.Null,
+                    HttpUtility.UrlDecode(input.Path));
+                var ossObject = await oss.CreateObjectAsync(request);
 
-                // 文件扩展名
-                var fileExtensionName = FileHelper.GetExtension(input.Object);
-                var fileAllowExtension = await SettingProvider.GetOrNullAsync(AbpOssManagementSettingNames.AllowFileExtensions);
-                // 检查文件扩展名
-                if (!fileAllowExtension.Split(',')
-                    .Any(fe => fe.Equals(fileExtensionName, StringComparison.CurrentCultureIgnoreCase)))
-                {
-                    ThrowValidationException(L["NotAllowedFileExtensionName", fileExtensionName], "FileName");
-                }
+                return ObjectMapper.Map<OssObject, OssObjectDto>(ossObject);
+            } 
+            else
+            {
+                var ossObject = await Merger.MergeAsync(input);
+
+                return ObjectMapper.Map<OssObject, OssObjectDto>(ossObject);
             }
-
-            var oss = CreateOssContainer();
-
-            var createOssObjectRequest = new CreateOssObjectRequest(
-                input.Bucket,
-                input.Object,
-                input.Content,
-                input.Path,
-                input.ExpirationTime)
-            {
-                Overwrite = input.Overwrite
-            };
-            var ossObject = await oss.CreateObjectAsync(createOssObjectRequest);
-
-            return ObjectMapper.Map<OssObject, OssObjectDto>(ossObject);
         }
 
         [Authorize(AbpOssManagementPermissions.OssObject.Delete)]
@@ -94,23 +65,23 @@ namespace LINGYUN.Abp.OssManagement
         {
             var oss = CreateOssContainer();
 
-            var ossObject = await oss.GetObjectAsync(input.Bucket, input.Object, input.Path);
+            var ossObject = await oss.GetObjectAsync(input.Bucket, input.Object, input.Path, input.MD5);
 
             return ObjectMapper.Map<OssObject, OssObjectDto>(ossObject);
+        }
+
+        public virtual async Task<IRemoteStreamContent> GetContentAsync(GetOssObjectInput input)
+        {
+            var oss = CreateOssContainer();
+
+            var ossObject = await oss.GetObjectAsync(input.Bucket, input.Object, input.Path, input.MD5);
+
+            return new RemoteStreamContent(ossObject.Content, ossObject.Name);
         }
 
         protected virtual IOssContainer CreateOssContainer()
         {
             return OssContainerFactory.Create();
-        }
-
-        private static void ThrowValidationException(string message, string memberName)
-        {
-            throw new AbpValidationException(message,
-                new List<ValidationResult>
-                {
-                    new ValidationResult(message, new[] {memberName})
-                });
         }
     }
 }

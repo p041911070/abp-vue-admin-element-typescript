@@ -8,10 +8,13 @@ namespace LINGYUN.Abp.OssManagement
         public string Bucket { get; }
         public string Path { get; }
         public string Object { get; }
+        public bool MD5 { get; set; }
         /// <summary>
         /// 需要处理文件的参数
         /// </summary>
         public string Process { get; }
+
+        public bool CreatePathIsNotExists { get; set; } = false;
 
         public GetOssObjectRequest(
             [NotNull] string bucket,

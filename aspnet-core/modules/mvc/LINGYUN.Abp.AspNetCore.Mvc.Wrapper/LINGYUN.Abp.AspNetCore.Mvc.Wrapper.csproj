@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="..\..\..\configureawait.props" />
+	<Import Project="..\..\..\common.props" />
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<RootNamespace />
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Remove="LINGYUN\Abp\AspNetCore\Mvc\Wrapper\Localization\Resources\en.json" />
+	  <None Remove="LINGYUN\Abp\AspNetCore\Mvc\Wrapper\Localization\Resources\zh-Hans.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="LINGYUN\Abp\AspNetCore\Mvc\Wrapper\Localization\Resources\en.json" />
+	  <EmbeddedResource Include="LINGYUN\Abp\AspNetCore\Mvc\Wrapper\Localization\Resources\zh-Hans.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="$(VoloAbpPackageVersion)" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\common\LINGYUN.Abp.Wrapper\LINGYUN.Abp.Wrapper.csproj" />
+	</ItemGroup>
+
+</Project>

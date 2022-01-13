@@ -1,5 +1,4 @@
-﻿using LINGYUN.Abp.Notifications.WeChat.MiniProgram.Features;
-using LINGYUN.Abp.WeChat.MiniProgram.Messages;
+﻿using LINGYUN.Abp.WeChat.MiniProgram.Messages;
 using LINGYUN.Abp.WeChat.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Volo.Abp.Features;
 
 namespace LINGYUN.Abp.Notifications.WeChat.MiniProgram
 {
@@ -18,15 +16,12 @@ namespace LINGYUN.Abp.Notifications.WeChat.MiniProgram
     {
         public const string ProviderName = "WeChat.MiniProgram";
         public override string Name => ProviderName;
-
-        private IFeatureChecker _featureChecker;
-        protected IFeatureChecker FeatureChecker => LazyGetRequiredService(ref _featureChecker);
         protected ISubscribeMessager SubscribeMessager { get; }
         protected AbpNotificationsWeChatMiniProgramOptions Options { get; }
         public WeChatMiniProgramNotificationPublishProvider(
             IServiceProvider serviceProvider,
             ISubscribeMessager subscribeMessager,
-            IOptions<AbpNotificationsWeChatMiniProgramOptions> options) 
+            IOptions<AbpNotificationsWeChatMiniProgramOptions> options)
             : base(serviceProvider)
         {
             Options = options.Value;
@@ -35,15 +30,6 @@ namespace LINGYUN.Abp.Notifications.WeChat.MiniProgram
 
         protected override async Task PublishAsync(NotificationInfo notification, IEnumerable<UserIdentifier> identifiers, CancellationToken cancellationToken = default)
         {
-
-            // 先检测微信小程序的功能限制
-            var publishEnabled = await FeatureChecker.GetAsync(WeChatMiniProgramFeatures.Notifications.Default, false);
-
-            if (!publishEnabled)
-            {
-                return;
-            }
-
             // step1 默认微信openid绑定的就是username,
             // 如果不是,需要自行处理openid获取逻辑
 
@@ -85,14 +71,14 @@ namespace LINGYUN.Abp.Notifications.WeChat.MiniProgram
                 // 发送小程序订阅消息
                 await SubscribeMessager
                     .SendAsync(
-                        identifier.UserId, templateId, redirect, weAppLang, 
-                        weAppState, notification.Data.Properties, cancellationToken);
+                        identifier.UserId, templateId, redirect, weAppLang,
+                        weAppState, notification.Data.ExtraProperties, cancellationToken);
             }
             else
             {
                 var weChatWeAppNotificationData = new SubscribeMessage(templateId, redirect, weAppState, weAppLang);
                 // 写入模板数据
-                weChatWeAppNotificationData.WriteData(notification.Data.Properties);
+                weChatWeAppNotificationData.WriteData(notification.Data.ExtraProperties);
 
                 Logger.LogDebug($"Sending wechat weapp notification: {notification.Name}");
 
@@ -108,7 +94,7 @@ namespace LINGYUN.Abp.Notifications.WeChat.MiniProgram
 
         protected string GetOrDefault(NotificationData data, string key, string defaultValue)
         {
-            if (data.Properties.TryGetValue(key, out object value))
+            if (data.ExtraProperties.TryGetValue(key, out object value))
             {
                 // 取得了数据就删除对应键值
                 // data.Properties.Remove(key);

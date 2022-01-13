@@ -108,35 +108,44 @@ namespace LINGYUN.Abp.Identity
         #endregion
 
         [Authorize(Volo.Abp.Identity.IdentityPermissions.Users.Update)]
-        public virtual async Task ChangePasswordAsync(Guid id, ChangePasswordInput input)
+        public virtual async Task ChangeTwoFactorEnabledAsync(Guid id, TwoFactorEnabledDto input)
         {
-            await IdentityOptions.SetAsync();
-            var user = await UserManager.GetByIdAsync(id);
-
-            if (user.IsExternal)
-            {
-                throw new BusinessException(code: Volo.Abp.Identity.IdentityErrorCodes.ExternalUserPasswordChange);
-            }
-
-            if (user.PasswordHash == null)
-            {
-                (await UserManager.AddPasswordAsync(user, input.NewPassword)).CheckErrors();
-
-                return;
-            }
-
-            (await UserManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword)).CheckErrors();
-        }
-
-        [Authorize(Volo.Abp.Identity.IdentityPermissions.Users.Update)]
-        public virtual async Task ChangeTwoFactorEnabledAsync(Guid id, ChangeTwoFactorEnabledDto input)
-        {
-            await IdentityOptions.SetAsync();
-            var user = await UserManager.GetByIdAsync(id);
+            var user = await GetUserAsync(id);
 
             (await UserManager.SetTwoFactorEnabledWithAccountConfirmedAsync(user, input.Enabled)).CheckErrors();
 
             await CurrentUnitOfWork.SaveChangesAsync();
+        }
+
+        [Authorize(Volo.Abp.Identity.IdentityPermissions.Users.Update)]
+        public virtual async Task LockAsync(Guid id, int seconds)
+        {
+            var user = await GetUserAsync(id);
+            //if (!UserManager.SupportsUserLockout)
+            //{
+            //    throw new UserFriendlyException(L["Volo.Abp.Identity:UserLockoutNotEnabled"]);
+            //}
+            var endDate = new DateTimeOffset(Clock.Now).AddSeconds(seconds);
+            (await UserManager.SetLockoutEndDateAsync(user, endDate)).CheckErrors();
+
+            await CurrentUnitOfWork.SaveChangesAsync();
+        }
+
+        [Authorize(Volo.Abp.Identity.IdentityPermissions.Users.Update)]
+        public virtual async Task UnLockAsync(Guid id)
+        {
+            var user = await GetUserAsync(id);
+            (await UserManager.SetLockoutEndDateAsync(user, null)).CheckErrors();
+
+            await CurrentUnitOfWork.SaveChangesAsync();
+        }
+
+        protected virtual async Task<IdentityUser> GetUserAsync(Guid id)
+        {
+            await IdentityOptions.SetAsync();
+            var user = await UserManager.GetByIdAsync(id);
+
+            return user;
         }
     }
 }

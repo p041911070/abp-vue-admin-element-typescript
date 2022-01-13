@@ -1,4 +1,6 @@
-﻿using LINGYUN.Abp.Notifications.Internal;
+﻿using LINGYUN.Abp.IdGenerator;
+using LINGYUN.Abp.Notifications.Internal;
+using LINGYUN.Abp.RealTime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System;
@@ -15,7 +17,9 @@ namespace LINGYUN.Abp.Notifications
     [DependsOn(
         typeof(AbpBackgroundWorkersModule),
         typeof(AbpBackgroundJobsAbstractionsModule),
-        typeof(AbpJsonModule))]
+        typeof(AbpIdGeneratorModule),
+        typeof(AbpJsonModule),
+        typeof(AbpRealTimeModule))]
     public class AbpNotificationModule : AbpModule
     {
 

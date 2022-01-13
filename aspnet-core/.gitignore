@@ -1,2 +1,8 @@
 .vs
 LocalNuget
+*.DotSettings.user
+**/*.csproj.user
+templates
+nupkg
+consoles
+*.configs.cache

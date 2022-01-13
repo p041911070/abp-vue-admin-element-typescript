@@ -1,19 +1,29 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  
-  <Import Project="..\..\..\common.props" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <RootNamespace />
-  </PropertyGroup>
+	<Import Project="..\..\..\configureawait.props" />
+	<Import Project="..\..\..\common.props" />
 
-  <ItemGroup>
-    <PackageReference Include="Volo.Abp.Auditing" Version="4.3.0" />
-    <PackageReference Include="Volo.Abp.EventBus" Version="4.3.0" />
-  </ItemGroup>
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<RootNamespace />
+	</PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\LINGYUN.Abp.RealTime\LINGYUN.Abp.RealTime.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<None Remove="LINGYUN\Abp\IM\Localization\Resources\*.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="LINGYUN\Abp\IM\Localization\Resources\*.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Volo.Abp.Auditing" Version="$(VoloAbpPackageVersion)" />
+		<PackageReference Include="Volo.Abp.EventBus" Version="$(VoloAbpPackageVersion)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\LINGYUN.Abp.IdGenerator\LINGYUN.Abp.IdGenerator.csproj" />
+		<ProjectReference Include="..\LINGYUN.Abp.RealTime\LINGYUN.Abp.RealTime.csproj" />
+	</ItemGroup>
 
 </Project>

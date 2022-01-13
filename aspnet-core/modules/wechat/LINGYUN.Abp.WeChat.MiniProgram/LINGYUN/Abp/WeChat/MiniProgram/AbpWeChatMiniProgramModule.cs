@@ -1,16 +1,16 @@
-﻿using LINGYUN.Abp.WeChat.Localization;
+﻿using LINGYUN.Abp.Features.LimitValidation;
+using LINGYUN.Abp.WeChat.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
-using Volo.Abp.Settings;
 using Volo.Abp.VirtualFileSystem;
 
 namespace LINGYUN.Abp.WeChat.MiniProgram
 {
     [DependsOn(
         typeof(AbpWeChatModule),
-        typeof(AbpSettingsModule))]
+        typeof(AbpFeaturesLimitValidationModule))]
     public class AbpWeChatMiniProgramModule : AbpModule
     {
         public override void ConfigureServices(ServiceConfigurationContext context)

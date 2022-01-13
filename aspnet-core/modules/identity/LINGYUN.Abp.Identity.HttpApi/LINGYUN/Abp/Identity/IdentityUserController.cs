@@ -78,18 +78,26 @@ namespace LINGYUN.Abp.Identity
 
         #endregion
 
-        [HttpPut] //TODO: Post?
-        [Route("change-password")]
-        public virtual async Task ChangePasswordAsync(Guid id, ChangePasswordInput input)
-        {
-            await UserAppService.ChangePasswordAsync(id, input);
-        }
 
         [HttpPut]
         [Route("change-two-factor")]
-        public virtual async Task ChangeTwoFactorEnabledAsync(Guid id, ChangeTwoFactorEnabledDto input)
+        public virtual async Task ChangeTwoFactorEnabledAsync(Guid id, TwoFactorEnabledDto input)
         {
             await UserAppService.ChangeTwoFactorEnabledAsync(id, input);
+        }
+
+        [HttpPut]
+        [Route("{id}/lock/{seconds}")]
+        public virtual async Task LockAsync(Guid id, int seconds)
+        {
+            await UserAppService.LockAsync(id, seconds);
+        }
+
+        [HttpPut]
+        [Route("{id}/unlock")]
+        public virtual async Task UnLockAsync(Guid id)
+        {
+            await UserAppService.UnLockAsync(id);
         }
     }
 }

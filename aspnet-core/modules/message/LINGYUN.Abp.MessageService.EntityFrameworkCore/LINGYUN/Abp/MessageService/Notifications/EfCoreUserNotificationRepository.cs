@@ -17,13 +17,13 @@ namespace LINGYUN.Abp.MessageService.Notifications
         IUserNotificationRepository, ITransientDependency
     {
         public EfCoreUserNotificationRepository(
-            IDbContextProvider<IMessageServiceDbContext> dbContextProvider) 
+            IDbContextProvider<IMessageServiceDbContext> dbContextProvider)
             : base(dbContextProvider)
         {
         }
 
         public virtual async Task<bool> AnyAsync(
-            Guid userId, 
+            Guid userId,
             long notificationId,
             CancellationToken cancellationToken = default)
         {
@@ -75,7 +75,7 @@ namespace LINGYUN.Abp.MessageService.Notifications
         }
 
         public virtual async Task<int> GetCountAsync(
-            Guid userId, 
+            Guid userId,
             string filter = "",
             NotificationReadState? readState = null,
             CancellationToken cancellationToken = default)
@@ -98,18 +98,15 @@ namespace LINGYUN.Abp.MessageService.Notifications
         }
 
         public virtual async Task<List<Notification>> GetListAsync(
-            Guid userId, 
+            Guid userId,
             string filter = "",
             string sorting = nameof(Notification.CreationTime),
-            bool reverse = true,
             NotificationReadState? readState = null,
             int skipCount = 1,
             int maxResultCount = 10,
             CancellationToken cancellationToken = default)
         {
-            sorting ??= nameof(Notification.CreationTime);
-            sorting = reverse ? sorting + " DESC" : sorting;
-
+            sorting ??= $"{nameof(Notification.CreationTime)} DESC";
             var dbContext = await GetDbContextAsync();
             var userNotifilerQuery = dbContext.Set<UserNotification>()
                                               .Where(x => x.UserId == userId)

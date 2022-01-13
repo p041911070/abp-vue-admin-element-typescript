@@ -29,23 +29,37 @@ namespace LINGYUN.Abp.MessageService.Chat
         /// </summary>
         public virtual MessageType Type { get; protected set; }
         /// <summary>
+        /// 消息来源
+        /// </summary>
+        public virtual MessageSourceTye Source { get; protected set; }
+        /// <summary>
         /// 发送状态
         /// </summary>
-        public virtual MessageSendState SendState { get; protected set; }
+        public virtual MessageState State { get; protected set; }
         protected Message() { }
-        public Message(long id, Guid sendUserId, string sendUserName, string content, MessageType type = MessageType.Text)
+        protected Message(
+            long id,
+            Guid sendUserId,
+            string sendUserName,
+            string content,
+            MessageType type = MessageType.Text,
+            MessageSourceTye source = MessageSourceTye.User,
+            Guid? tenantId = null)
         {
             MessageId = id;
             CreatorId = sendUserId;
             SendUserName = sendUserName;
             Content = content;
             Type = type;
+            Source = source;
             CreationTime = DateTime.Now;
+            TenantId = tenantId;
+            ChangeSendState();
         }
 
-        public void ChangeSendState(MessageSendState state = MessageSendState.Send)
+        public void ChangeSendState(MessageState state = MessageState.Send)
         {
-            SendState = state;
+            State = state;
         }
     }
 }
